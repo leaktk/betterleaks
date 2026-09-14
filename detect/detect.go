@@ -205,11 +205,17 @@ func NewDetector(cfg config.Config) *Detector {
 // NewDetectorContext is the same as NewDetector but supports passing in a
 // context to use for timeouts
 func NewDetectorContext(ctx context.Context, cfg config.Config) *Detector {
-	// grab offline tiktoken encoder
-	tiktoken.SetBpeLoader(tiktoken_loader.NewOfflineLoader())
-	tke, err := tiktoken.GetEncoding("cl100k_base")
-	if err != nil {
-		logging.Warn().Err(err).Msgf("Could not pull down cl100k_base tiktokenizer")
+	var tke *tiktoken.Tiktoken
+
+	if v := os.Getenv("BETTERLEAKS_NO_BPE_CHECK"); len(v) == 0 || v == "0" {
+		var err error
+
+		// grab offline tiktoken encoder
+		tiktoken.SetBpeLoader(tiktoken_loader.NewOfflineLoader())
+		tke, err = tiktoken.GetEncoding("cl100k_base")
+		if err != nil {
+			logging.Warn().Err(err).Msgf("Could not pull down cl100k_base tiktokenizer")
+		}
 	}
 
 	return &Detector{
@@ -744,6 +750,10 @@ func (d *Detector) detectRule(fragment sources.Fragment, currentRaw string, r co
 }
 
 func (d *Detector) failsTokenEfficiencyFilter(secret string) bool {
+	if d.tokenizer == nil {
+		return false
+	}
+
 	// For short secrets (< 20 chars) that contain newlines, strip the newlines
 	// before analysis so that strings like "123\n\nTest" are evaluated as "123Test"
 	// allowing word detection to work.
